@@ -151,7 +151,7 @@ def pick_account(w3: Web3, accounts: dict[str, LocalAccount]) -> tuple[str, Loca
     print("\n=== PILIH AKUN ===")
     for i, n in enumerate(names, start=1):
         print(f"{i}) {n}  →  {w3.to_checksum_address(accounts[n].address)}")
-    raw = input("Pilih nomor / nama (Enter batal): ").strip()
+    raw = input("Pilih nomor / nama (Default 1): ").strip()
     if not raw:
         return None
     if raw.isdigit():
@@ -324,7 +324,7 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
         except Exception:
             print("Alamat tujuan tidak valid."); return
 
-    amount_str = input(f"Nominal {symbol()} (misal 1.0){saldo_prompt}: ").strip()
+    amount_str = input(f"\033[92mNominal {symbol()} (misal 1.0){saldo_prompt}:\033[0m ").strip()
     try:
         value_wei = to_wei(amount_str)
     except Exception:
