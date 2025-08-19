@@ -438,7 +438,7 @@ def main():
     except Exception:
         print(f"Target Chain  : {chain_id}")
     if active_acct:
-        print(f"Akun aktif     : {active_name} ({w3.to_checksum_address(active_acct.address)})")
+        print(f"Akun aktif    : {active_name} ({w3.to_checksum_address(active_acct.address)})")
     else:
         print("Akun aktif     : -")
     print("------------------------------------")
