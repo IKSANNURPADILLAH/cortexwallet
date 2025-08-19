@@ -148,7 +148,7 @@ def pick_account(w3: Web3, accounts: dict[str, LocalAccount]) -> tuple[str, Loca
         print("ERROR: Tidak ada akun di .env (CTXC_PK_* atau CTXC_PRIVATE_KEY).")
         return None
     names = list(accounts.keys())
-    print("\n=== PILIH AKUN ===")
+    print("\n=========================== PILIH AKUN ===========================")
     for i, n in enumerate(names, start=1):
         print(f"{i}) {n}  →  {w3.to_checksum_address(accounts[n].address)}")
     raw = input("Pilih nomor / nama (Default 1): ").strip()
@@ -183,7 +183,7 @@ def fav_list(w3: Web3) -> None:
     favs = fav_load()
     if not favs:
         print("\nBelum ada alamat favorit.\n"); return
-    print("\n=== DAFTAR FAVORIT ===")
+    print("\n========================= DAFTAR FAVORIT =========================")
     for i, (name, addr) in enumerate(favs.items(), start=1):
         try:
             print(f"{i}. {name}: {w3.to_checksum_address(addr)}")
@@ -192,7 +192,7 @@ def fav_list(w3: Web3) -> None:
     print()
 
 def fav_add(w3: Web3) -> None:
-    print("\n=== TAMBAH FAVORIT ===")
+    print("\n========================= TAMBAH FAVORIT =========================")
     name = input("Nama panggilan: ").strip()
     if not name:
         print("Nama tidak boleh kosong."); return
@@ -214,7 +214,7 @@ def fav_remove() -> None:
     favs = fav_load()
     if not favs:
         print("\nTidak ada favorit untuk dihapus.\n"); return
-    print("\n=== HAPUS FAVORIT ===")
+    print("\n========================== HAPUS FAVORIT =========================")
     names = list(favs.keys())
     for i, n in enumerate(names, start=1):
         print(f"{i}) {n}")
@@ -240,7 +240,7 @@ def fav_pick(w3: Web3) -> str | None:
         print("Belum ada favorit.")
         return None
     names = list(favs.keys())
-    print("\n=== PILIH FAVORIT ===")
+    print("\n========================== PILIH FAVORIT =========================")
     for i, n in enumerate(names, start=1):
         print(f"{i}) {n}  →  {favs[n]}")
     raw = input("Pilih nomor / nama (Enter batal): ").strip()
@@ -298,7 +298,7 @@ def build_tx(w3: Web3, from_addr: str, to_addr: str, value_wei: int, nonce: int,
     return tx, fee_model
 
 def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
-    print("\n=== KIRIM CTXC ===")
+    print("\n=========================== KIRIM CTXC ===========================")
     from_addr = w3.to_checksum_address(acct.address)
     try:
         bal_wei = w3.eth.get_balance(from_addr)
@@ -351,7 +351,7 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
     balance = w3.eth.get_balance(from_addr)
     total_needed = value_wei + est_fee
 
-    print("\n--- Ringkasan ---")
+    print("\n============================ RINGKASAN ===========================")
     print(f"Dari            : {from_addr}")
     print(f"Ke              : {to_addr}")
     print(f"Jumlah          : {from_wei(value_wei)} {symbol()}")
@@ -390,7 +390,7 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
 # ============================ Menu ============================
 def menu_favorites(w3: Web3):
     while True:
-        print("\n=== FAVORIT ===")
+        print("\n============================= FAVORIT ============================")
         print("1) List favorit")
         print("2) Tambah favorit")
         print("3) Hapus favorit")
@@ -428,9 +428,9 @@ def main():
     else:
         print("\nPERINGATAN: Tidak ada akun di .env. (Masih bisa kelola favorit.)")
 
-    print("====================================")
+    print("==================================================================")
     print(" CTXC TOOL (Send, Favorites, Multi-Account)")
-    print("====================================")
+    print("==================================================================")
     print(f"Node          : {os.getenv('CTXC_RPC_URL', 'security.cortexlabs.ai:30088')}")
     try:
         actual_chain = w3.eth.chain_id
@@ -441,7 +441,7 @@ def main():
         print(f"Akun aktif    : {active_name} ({w3.to_checksum_address(active_acct.address)})")
     else:
         print("Akun aktif     : -")
-    print("------------------------------------")
+    print("------------------------------------------------------------------")
 
     # Menu TANPA opsi refresh saldo
     while True:
