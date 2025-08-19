@@ -151,7 +151,7 @@ def pick_account(w3: Web3, accounts: dict[str, LocalAccount]) -> tuple[str, Loca
     print("\n=========================== PILIH AKUN ===========================")
     for i, n in enumerate(names, start=1):
         print(f"{i}) {n}  →  {w3.to_checksum_address(accounts[n].address)}")
-    raw = input("Pilih nomor / nama (Default 1): ").strip()
+    raw = input("Pilih nomor / nama (Enter batal): ").strip()
     if not raw:
         return None
     if raw.isdigit():
@@ -423,8 +423,9 @@ def main():
         if picked:
             active_name, active_acct = picked
         else:
-            active_name, active_acct = next(iter(accounts.items()))
-            print(f"Memakai default: {active_name} → {w3.to_checksum_address(active_acct.address)}")
+#            active_name, active_acct = next(iter(accounts.items()))
+#            print(f"Memakai default: {active_name} → {w3.to_checksum_address(active_acct.address)}")
+            print("Dibatalkan."); return
     else:
         print("\nPERINGATAN: Tidak ada akun di .env. (Masih bisa kelola favorit.)")
 
