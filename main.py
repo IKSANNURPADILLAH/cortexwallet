@@ -332,7 +332,7 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
         tx_hash = w3.eth.send_raw_transaction(raw)
         print("\n=== Transaksi dikirim! ===")
         print(f"Chain ID  : {chain_id}")
-        print(f"Tx Hash   : {tx_hash.hex()}")
+        print(f"Tx Hash   : https://cerebro.cortexlabs.ai/tx/0x{tx_hash.hex()}")
         print("Tempel hash ke block explorer Cortex (jika tersedia).")
     except (ValueError, ContractLogicError, RuntimeError) as e:
         print(f"ERROR kirim transaksi: {e}")
