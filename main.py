@@ -6,6 +6,35 @@ from web3 import Web3
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from web3.exceptions import ContractLogicError
+#============================= tambahan =========================
+import requests, time
+
+# Cache sederhana biar gak spam API
+_PRICE_CACHE = {"v": None, "ts": 0}
+
+def get_ctxc_price_idr(ttl_sec: int = 60) -> Decimal | None:
+    """
+    Ambil harga CTXC→IDR via CoinGecko Simple Price API.
+    Di-cache selama ttl_sec detik untuk mengurangi rate limit.
+    """
+    now = time.time()
+    if _PRICE_CACHE["v"] is not None and (now - _PRICE_CACHE["ts"]) < ttl_sec:
+        return _PRICE_CACHE["v"]
+
+    # Bisa override via env kalau mau pakai endpoint lain
+    url = os.getenv(
+        "CTXC_PRICE_API",
+        "https://api.coingecko.com/api/v3/simple/price?ids=cortex&vs_currencies=idr",
+    )
+    try:
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        price = Decimal(str(data["cortex"]["idr"]))
+        _PRICE_CACHE.update(v=price, ts=now)
+        return price
+    except Exception:
+        return None
 
 decimal.getcontext().prec = 50
 FAV_FILE = os.path.join(os.path.dirname(__file__), "ctxc_favorites.json")
@@ -93,12 +122,26 @@ def get_all_balances(w3: Web3, accounts: dict[str, LocalAccount]) -> dict[str, d
     return res
 
 def print_balances_table(balances: dict[str, dict]):
+    price_idr = get_ctxc_price_idr()  # ambil harga sekali di awal
     print("\nAkun ditemukan di .env:")
     for name, info in balances.items():
         if "error" in info:
             print(f"- {name}: {info['address']}  (ERROR: {info['error']})")
         else:
-            print(f"- {name}: {info['address']}  | Saldo: {info['ctxc']} {symbol()}")
+            line = f"- {name}: {info['address']}  | Saldo: {info['ctxc']} {symbol()}"
+            if price_idr is not None:
+                try:
+                    idr_value = Decimal(str(info["ctxc"])) * price_idr
+                    line += f" (≈ Rp {idr_value:,.2f})"
+                except Exception:
+                    pass
+            print(line)
+
+    if price_idr is not None:
+        print(f"\nHarga 1 {symbol()} ≈ Rp {price_idr:,.2f} (sumber: CoinGecko)")
+    else:
+        print("\n[Gagal ambil harga IDR; cek koneksi atau set CTXC_PRICE_API]")
+
 
 def pick_account(w3: Web3, accounts: dict[str, LocalAccount]) -> tuple[str, LocalAccount] | None:
     if not accounts:
@@ -257,7 +300,14 @@ def build_tx(w3: Web3, from_addr: str, to_addr: str, value_wei: int, nonce: int,
 def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
     print("\n=== KIRIM CTXC ===")
     from_addr = w3.to_checksum_address(acct.address)
-
+    try:
+        bal_wei = w3.eth.get_balance(from_addr)
+        bal_ctxc = from_wei(bal_wei)
+        bal_str = f"{bal_ctxc:.8f}".rstrip("0").rstrip(".")  # tampilkan rapi max 8 desimal
+        saldo_prompt = f" [Saldo: {bal_str} {symbol()}]"
+    except Exception:
+        saldo_prompt = ""  # kalau gagal fetch saldo, tetap lanjut tanpa info saldo
+        
     print("Pilih tujuan:")
     print("1) Dari favorit")
     print("2) Input manual")
@@ -274,7 +324,7 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
         except Exception:
             print("Alamat tujuan tidak valid."); return
 
-    amount_str = input(f"Nominal {symbol()} (misal 1.0): ").strip()
+    amount_str = input(f"Nominal {symbol()} (misal 1.0){saldo_prompt}: ").strip()
     try:
         value_wei = to_wei(amount_str)
     except Exception:
