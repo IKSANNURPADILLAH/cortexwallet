@@ -6,35 +6,50 @@ from web3 import Web3
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from web3.exceptions import ContractLogicError
-#============================= tambahan =========================
 import requests, time
 
-# Cache sederhana biar gak spam API
-_PRICE_CACHE = {"v": None, "ts": 0}
+# ============================= Harga CTXC =============================
+# Cache harga gabungan: usd & idr
+_PRICE_CACHE = {"usd": None, "idr": None, "ts": 0}
 
-def get_ctxc_price_idr(ttl_sec: int = 60) -> Decimal | None:
+def get_ctxc_prices(ttl_sec: int = 60) -> tuple[Decimal | None, Decimal | None]:
     """
-    Ambil harga CTXC→IDR via CoinGecko Simple Price API.
+    Ambil harga CTXC ke USD dan IDR via CoinGecko Simple Price API.
     Di-cache selama ttl_sec detik untuk mengurangi rate limit.
     """
     now = time.time()
-    if _PRICE_CACHE["v"] is not None and (now - _PRICE_CACHE["ts"]) < ttl_sec:
-        return _PRICE_CACHE["v"]
+    if (
+        _PRICE_CACHE["usd"] is not None
+        and _PRICE_CACHE["idr"] is not None
+        and (now - _PRICE_CACHE["ts"]) < ttl_sec
+    ):
+        return _PRICE_CACHE["usd"], _PRICE_CACHE["idr"]
 
-    # Bisa override via env kalau mau pakai endpoint lain
     url = os.getenv(
-        "CTXC_PRICE_API",
-        "https://api.coingecko.com/api/v3/simple/price?ids=cortex&vs_currencies=idr",
+        "CTXC_PRICE_API_MULTI",
+        "https://api.coingecko.com/api/v3/simple/price?ids=cortex&vs_currencies=usd%2Cidr",
     )
     try:
         r = requests.get(url, timeout=10)
         r.raise_for_status()
-        data = r.json()
-        price = Decimal(str(data["cortex"]["idr"]))
-        _PRICE_CACHE.update(v=price, ts=now)
-        return price
+        data = r.json().get("cortex", {})
+        usd = data.get("usd")
+        idr = data.get("idr")
+        usd_d = Decimal(str(usd)) if usd is not None else None
+        idr_d = Decimal(str(idr)) if idr is not None else None
+        _PRICE_CACHE.update(usd=usd_d, idr=idr_d, ts=now)
+        return usd_d, idr_d
     except Exception:
-        return None
+        return None, None
+
+# Kompatibilitas untuk kode lain yang mungkin masih memanggil fungsi lama
+def get_ctxc_price_usd(ttl_sec: int = 60) -> Decimal | None:
+    usd, _ = get_ctxc_prices(ttl_sec)
+    return usd
+
+def get_ctxc_price_idr(ttl_sec: int = 60) -> Decimal | None:
+    _, idr = get_ctxc_prices(ttl_sec)
+    return idr
 
 decimal.getcontext().prec = 50
 FAV_FILE = os.path.join(os.path.dirname(__file__), "ctxc_favorites.json")
@@ -122,26 +137,37 @@ def get_all_balances(w3: Web3, accounts: dict[str, LocalAccount]) -> dict[str, d
     return res
 
 def print_balances_table(balances: dict[str, dict]):
-    price_idr = get_ctxc_price_idr()  # ambil harga sekali di awal
+    price_usd, price_idr = get_ctxc_prices()
     print("\nAkun ditemukan di .env:")
     for name, info in balances.items():
         if "error" in info:
             print(f"- {name}: {info['address']}  (ERROR: {info['error']})")
         else:
-            line = f"- {name}: {info['address']}  | Saldo: {info['ctxc']} {symbol()}"
-            if price_idr is not None:
-                try:
-                    idr_value = Decimal(str(info["ctxc"])) * price_idr
-                    line += f" (≈ Rp {idr_value:,.2f})"
-                except Exception:
-                    pass
+            line = f"- {name}: {info['address']}  | Saldo: {info['ctxc']:,.7f} {symbol()}"
+            try:
+                ctxc_amt = Decimal(str(info["ctxc"]))
+                parts = []
+                if price_idr is not None:
+                    idr_value = ctxc_amt * price_idr
+                    parts.append(f"Rp {idr_value:,.0f}")
+                if price_usd is not None:
+                    usd_value = ctxc_amt * price_usd
+                    parts.append(f"USD {usd_value:,.2f}")
+                if parts:
+                    line += " (≈ " + " | ".join(parts) + ")"
+            except Exception:
+                pass
             print(line)
 
-    if price_idr is not None:
-        print(f"\nHarga 1 {symbol()} ≈ Rp {price_idr:,.2f} (sumber: CoinGecko)")
+    if price_usd is not None or price_idr is not None:
+        ringkas = [f"\nHarga 1 {symbol()} ≈"]
+        if price_idr is not None:
+            ringkas.append(f"\033[92mRp {price_idr:,.0f}\033[0m")
+        if price_usd is not None:
+            ringkas.append(f"| \033[92mUSD {price_usd:,.4f}\033[0m")
+        print(" ".join(ringkas) + " (sumber: CoinGecko)")
     else:
-        print("\n[Gagal ambil harga IDR; cek koneksi atau set CTXC_PRICE_API]")
-
+        print("\n[Gagal ambil harga; cek koneksi atau set CTXC_PRICE_API_MULTI]")
 
 def pick_account(w3: Web3, accounts: dict[str, LocalAccount]) -> tuple[str, LocalAccount] | None:
     if not accounts:
@@ -259,14 +285,11 @@ def fav_pick(w3: Web3) -> str | None:
 def build_tx(w3: Web3, from_addr: str, to_addr: str, value_wei: int, nonce: int, chain_id: int, tip_gwei: Decimal | None):
     """Transfer CTXC, gas 21000, EIP-1559 jika ada, fallback legacy."""
     GAS_LIMIT_TRANSFER = 21000
-    # Deteksi EIP-1559 via baseFeePerGas
     try:
         latest = w3.eth.get_block("latest")
         base_fee = latest.get("baseFeePerGas")
     except Exception:
         base_fee = None
-
-    # Priority fee (tip)
     if tip_gwei is None:
         try:
             priority = w3.eth.max_priority_fee
@@ -276,7 +299,6 @@ def build_tx(w3: Web3, from_addr: str, to_addr: str, value_wei: int, nonce: int,
         priority = w3.to_wei(tip_gwei, "gwei")
 
     if base_fee is None:
-        # Legacy gasPrice
         try:
             gas_price = w3.eth.gas_price
         except Exception:
@@ -287,7 +309,6 @@ def build_tx(w3: Web3, from_addr: str, to_addr: str, value_wei: int, nonce: int,
         }
         fee_model = "legacy"
     else:
-        # EIP-1559
         max_fee = int(base_fee) * 2 + int(priority)
         tx = {
             "from": from_addr, "to": to_addr, "value": value_wei, "nonce": nonce,
@@ -303,11 +324,11 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
     try:
         bal_wei = w3.eth.get_balance(from_addr)
         bal_ctxc = from_wei(bal_wei)
-        bal_str = f"{bal_ctxc:.8f}".rstrip("0").rstrip(".")  # tampilkan rapi max 8 desimal
-        saldo_prompt = f" [Saldo: {bal_str} {symbol()}]"
+        bal_str = f"{bal_ctxc:.8f}".rstrip("0").rstrip(".")
+        saldo_prompt = f" [\033[92mSaldo: {bal_str} {symbol()}\033[0m]"
     except Exception:
-        saldo_prompt = ""  # kalau gagal fetch saldo, tetap lanjut tanpa info saldo
-        
+        saldo_prompt = ""
+
     print("Pilih tujuan:")
     print("1) Dari favorit")
     print("2) Input manual")
@@ -324,7 +345,7 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
         except Exception:
             print("Alamat tujuan tidak valid."); return
 
-    amount_str = input(f"\033[92mNominal {symbol()} (misal 1.0){saldo_prompt}:\033[0m ").strip()
+    amount_str = input(f"Nominal {symbol()} (misal 1.0){saldo_prompt}: ").strip()
     try:
         value_wei = to_wei(amount_str)
     except Exception:
@@ -341,10 +362,10 @@ def send_ctxc(w3: Web3, acct: LocalAccount, chain_id: int):
     nonce = w3.eth.get_transaction_count(from_addr)
     tx, fee_model = build_tx(w3, from_addr, to_addr, value_wei, nonce, chain_id, tip_gwei)
 
-    if "gasPrice" in tx:  # legacy
+    if "gasPrice" in tx:
         est_fee = tx["gas"] * tx["gasPrice"]
         gas_price_gwei = w3.from_wei(tx["gasPrice"], "gwei")
-    else:                 # eip1559
+    else:
         est_fee = tx["gas"] * tx["maxFeePerGas"]
         tip_gwei_show = w3.from_wei(tx["maxPriorityFeePerGas"], "gwei")
 
@@ -410,21 +431,15 @@ def menu_favorites(w3: Web3):
 def main():
     w3 = load_web3()
     chain_id = enforced_chain_id(w3)
-
-    # Load semua akun & tampilkan saldo segera
     accounts = load_accounts(w3)
     balances = get_all_balances(w3, accounts)
     print_balances_table(balances)
-
-    # Pilih akun aktif
     active_name, active_acct = None, None
     if accounts:
         picked = pick_account(w3, accounts)
         if picked:
             active_name, active_acct = picked
         else:
-#            active_name, active_acct = next(iter(accounts.items()))
-#            print(f"Memakai default: {active_name} → {w3.to_checksum_address(active_acct.address)}")
             print("Dibatalkan."); return
     else:
         print("\nPERINGATAN: Tidak ada akun di .env. (Masih bisa kelola favorit.)")
@@ -443,8 +458,6 @@ def main():
     else:
         print("Akun aktif     : -")
     print("------------------------------------------------------------------")
-
-    # Menu TANPA opsi refresh saldo
     while True:
         print(f"1) Kirim {symbol()}")
         print("2) Favorit (list/tambah/hapus)")
