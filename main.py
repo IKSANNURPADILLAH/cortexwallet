@@ -7,6 +7,12 @@ from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from web3.exceptions import ContractLogicError
 import requests, time
+import os
+
+#==============================clear screen=============================
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+clear_screen()
 
 # ============================= Harga CTXC =============================
 # Cache harga gabungan: usd & idr
@@ -160,12 +166,20 @@ def print_balances_table(balances: dict[str, dict]):
             print(line)
 
     if price_usd is not None or price_idr is not None:
-        ringkas = [f"\nHarga 1 {symbol()} ≈"]
+        ringkas = [f"\nHarga \033[92m1 {symbol()} ≈\033[0m"]
         if price_idr is not None:
             ringkas.append(f"\033[92mRp {price_idr:,.0f}\033[0m")
         if price_usd is not None:
             ringkas.append(f"| \033[92mUSD {price_usd:,.4f}\033[0m")
-        print(" ".join(ringkas) + " (sumber: CoinGecko)")
+        print(" ".join(ringkas) + "        : CoinGecko")
+        # ===== Tambahan: Rate konversi USD → IDR di bawahnya =====
+        if price_usd and price_idr:
+            try:
+                usd_idr = (price_idr / price_usd) if price_usd != 0 else None
+                if usd_idr:
+                    print(f"Rate konversi USD → IDR: \033[92m1 USD ≈ Rp {usd_idr:,.0f}\033[0m  : CoinGecko")
+            except Exception:
+                pass
     else:
         print("\n[Gagal ambil harga; cek koneksi atau set CTXC_PRICE_API_MULTI]")
 
